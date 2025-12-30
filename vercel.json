@@ -19,10 +19,6 @@
       "dest": "/server/index.js"
     },
     {
-      "src": "/assets/(.*)",
-      "handle": "filesystem"
-    },
-    {
       "src": "/(.*)",
       "dest": "/client/index.html"
     }
