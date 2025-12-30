@@ -13,7 +13,17 @@ This project implements a basic Pastebin-like application with a decoupled front
 -   **Persistence:** Redis
 -   **Frontend:** React.js (Vite)
 
-## 3. How to Run Locally
+## 3. API Endpoints
+
+The backend provides the following endpoints:
+
+-   `POST /api/pastes`: Creates a new paste.
+    -   **Body:** `{ "content": "...", "ttl_seconds": 3600, "max_views": 5 }`
+-   `POST /api/pastes/:id/view`: Retrieves a paste's content and decrements its view counter. This is the primary endpoint for viewing a paste.
+-   `GET /api/pastes/:id`: Retrieves a paste's content without decrementing the view counter.
+-   `GET /api/healthz`: A health check endpoint to verify the server is running and connected to Redis.
+
+## 4. How to Run Locally
 
 ### Prerequisites
 -   Node.js (v18+) and npm
