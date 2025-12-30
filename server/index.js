@@ -28,16 +28,9 @@ const getCurrentTime = (req) => {
 
 const PASTE_KEY_PREFIX = 'paste:';
 
-/**
- * Core logic to retrieve a paste, check its availability, and count a view.
- * @param {string} id The paste ID.
- * @param {object} req The Express request object.
- * @returns {Promise<{paste: object, error: string|null}>}
- */
 async function getAndViewPaste(id, req) {
     const key = `${PASTE_KEY_PREFIX}${id}`;
     const currentTime = getCurrentTime(req);
-
     const paste = await redis.hgetall(key);
 
     if (!paste || Object.keys(paste).length === 0) {
@@ -55,15 +48,12 @@ async function getAndViewPaste(id, req) {
     let remainingViews = paste.remainingViews ? parseInt(paste.remainingViews, 10) : null;
 
     if (remainingViews !== null) {
-        // --- View Count Enforcement (Atomic Redis Operation) ---
         const decrementedViews = await redis.hincrby(key, 'remainingViews', -1);
-        
         if (decrementedViews < 0) {
             await redis.del(key); 
             return { paste: null, error: 'view_limit_exceeded' };
         }
         remainingViews = decrementedViews;
-        // --- End View Count Enforcement ---
     }
 
     return {
@@ -85,6 +75,7 @@ app.get('/api', (req, res) => {
 
 // Create a new paste
 app.post('/api/pastes', async (req, res) => {
+    console.log('Received request to create a new paste.');
     try {
         const { content, ttl_seconds, max_views } = req.body;
         if (!content) {
@@ -121,6 +112,7 @@ app.post('/api/pastes', async (req, res) => {
 
 // Retrieve a paste (API)
 app.get('/api/pastes/:id', async (req, res) => {
+    console.log(`Received request to view paste: ${req.params.id}`);
     try {
         const { paste, error } = await getAndViewPaste(req.params.id, req);
 
@@ -128,7 +120,6 @@ app.get('/api/pastes/:id', async (req, res) => {
             return res.status(404).json({ error: `Paste not found (${error})` });
         }
         
-        // Ensure consistent ISO string format for timestamps
         res.json({
             content: paste.content,
             created_at: paste.created_at ? new Date(paste.created_at).toISOString() : null,
@@ -144,6 +135,7 @@ app.get('/api/pastes/:id', async (req, res) => {
 
 // Health check route
 app.get('/api/healthz', async (req, res) => {
+    console.log('Received request for health check.');
     try {
         const pingResponse = await redis.ping();
         if (pingResponse === 'PONG') {
@@ -157,31 +149,13 @@ app.get('/api/healthz', async (req, res) => {
     }
 });
 
-
-// --- Development-only redirect for client-side routing ---
-if (process.env.NODE_ENV !== 'production') {
-    app.use((req, res, next) => {
-        // This middleware intercepts all requests.
-        // It redirects any GET request that is not for an API endpoint to the React dev server.
-        if (req.method === 'GET' && !req.path.startsWith('/api/')) {
-            const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-            return res.redirect(`${clientUrl}${req.originalUrl}`);
-        }
-        // For all other requests (POST, etc.) or API calls, pass them on.
-        next();
-    });
-}
-
 // --- Error handling middleware (must be last) ---
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// --- Start server ---
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
-
+// --- DO NOT START A SERVER MANUALLY ---
+// Vercel will wrap this Express app into a serverless function.
+// `module.exports = app;` is all that's needed.
 module.exports = app;
