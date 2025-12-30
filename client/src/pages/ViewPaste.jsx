@@ -73,8 +73,8 @@ function ViewPaste() {
         setLoading(true);
         setError('');
         const response = await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL}/api/pastes/${id}/view`,
-          {}, // POST request with an empty body
+          `${import.meta.env.VITE_API_BASE_URL}/pastes/${id}/view`,
+          {}, // POST requests must have a body, even if empty
           { signal: controller.signal }
         );
         setPaste(response.data);

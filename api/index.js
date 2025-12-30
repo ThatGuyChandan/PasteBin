@@ -30,35 +30,6 @@ const getCurrentTime = (req) => {
 
 const PASTE_KEY_PREFIX = 'paste:';
 
-// This is the internal data-fetching function, now without side-effects
-async function getPasteData(id, req) {
-    const key = `${PASTE_KEY_PREFIX}${id}`;
-    const currentTime = getCurrentTime(req);
-
-    const paste = await redis.hgetall(key);
-
-    if (!paste || Object.keys(paste).length === 0) {
-        return { paste: null, error: 'not_found' };
-    }
-    
-    const expiresAt = paste.expiresAt ? parseInt(paste.expiresAt, 10) : null;
-    if (expiresAt && expiresAt < currentTime) {
-        await redis.del(key);
-        return { paste: null, error: 'expired' };
-    }
-
-    return {
-        paste: {
-            content: paste.content,
-            created_at: paste.createdAt ? parseInt(paste.createdAt, 10) : null,
-            expires_at: expiresAt,
-            remaining_views: paste.remainingViews ? parseInt(paste.remainingViews, 10) : null
-        },
-        error: null
-    };
-}
-
-
 // --- API Routes ---
 
 // Create a new paste
@@ -96,38 +67,46 @@ app.post('/api/pastes', async (req, res) => {
     }
 });
 
-// New endpoint to view a paste AND decrement the counter
+// View a paste and decrement its view counter
 app.post('/api/pastes/:id/view', async (req, res) => {
     try {
-        const key = `${PASTE_KEY_PREFIX}${id}`;
-        const pasteData = await redis.hgetall(key);
+        const key = `${PASTE_KEY_PREFIX}${req.params.id}`;
+        const currentTime = getCurrentTime(req);
         
-        if (!pasteData || Object.keys(pasteData).length === 0) {
+        // 1. Fetch the paste data in one go.
+        const pasteData = await redis.hgetall(key);
+
+        // 2. Check for existence. If the key doesn't exist, hgetall returns an empty object.
+        if (Object.keys(pasteData).length === 0) {
             return res.status(404).json({ error: 'Paste not found' });
         }
 
-        const maxViews = pasteData.maxViews ? parseInt(pasteData.maxViews, 10) : null;
+        // 3. Check for time expiration.
+        const expiresAt = pasteData.expiresAt ? parseInt(pasteData.expiresAt, 10) : null;
+        if (expiresAt && expiresAt < currentTime) {
+            await redis.del(key);
+            return res.status(404).json({ error: 'Paste has expired' });
+        }
 
+        // 4. Handle view count logic.
+        const maxViews = pasteData.maxViews ? parseInt(pasteData.maxViews, 10) : null;
         if (maxViews !== null) {
+            // hincrby is atomic and returns the new value.
             const decrementedViews = await redis.hincrby(key, 'remainingViews', -1);
+
             if (decrementedViews < 0) {
-                await redis.del(key);
+                await redis.del(key); // Clean up the paste.
                 return res.status(404).json({ error: 'View limit exceeded' });
             }
+            pasteData.remainingViews = decrementedViews.toString(); // Update for the response.
         }
 
-        // Now that we've processed the view, get the (potentially updated) data
-        const { paste, error } = await getPasteData(req.params.id, req);
-
-        if (error) {
-             return res.status(404).json({ error: `Paste not found (${error})` });
-        }
-
+        // 5. If all checks pass, return the paste.
         res.json({
-            content: paste.content,
-            created_at: paste.created_at ? new Date(paste.created_at).toISOString() : null,
-            remaining_views: paste.remaining_views,
-            expires_at: paste.expires_at ? new Date(paste.expires_at).toISOString() : null
+            content: pasteData.content,
+            created_at: pasteData.createdAt ? new Date(parseInt(pasteData.createdAt, 10)).toISOString() : null,
+            remaining_views: pasteData.remainingViews ? parseInt(pasteData.remainingViews, 10) : null,
+            expires_at: expiresAt ? new Date(expiresAt).toISOString() : null
         });
 
     } catch (error) {
@@ -135,30 +114,6 @@ app.post('/api/pastes/:id/view', async (req, res) => {
         res.status(500).json({ error: 'Failed to retrieve paste' });
     }
 });
-
-// This endpoint is now for data retrieval ONLY, without side effects.
-// It is not currently used by the frontend but is kept for API completeness.
-app.get('/api/pastes/:id', async (req, res) => {
-    try {
-        const { paste, error } = await getPasteData(req.params.id, req);
-
-        if (error) {
-            return res.status(404).json({ error: `Paste not found (${error})` });
-        }
-        
-        res.json({
-            content: paste.content,
-            created_at: paste.created_at ? new Date(paste.created_at).toISOString() : null,
-            remaining_views: paste.remaining_views,
-            expires_at: paste.expires_at ? new Date(paste.expires_at).toISOString() : null
-        });
-
-    } catch (error) {
-        console.error(`Failed to retrieve paste ${req.params.id}:`, error);
-        res.status(500).json({ error: 'Failed to retrieve paste' });
-    }
-});
-
 
 // Health check route
 app.get('/api/healthz', async (req, res) => {
