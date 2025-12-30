@@ -92,8 +92,18 @@ This project is designed for a decoupled deployment: the backend on a service li
 ### Frontend (Vercel)
 1.  Push your code to a GitHub repository.
 2.  On Vercel, create a new project and connect it to your repository.
-3.  Vercel will detect the Vite app in the `/client` directory. You may need to set the "Root Directory" to `client`.
-4.  Add the following Environment Variable in the Vercel project settings:
+3.  Configure the project settings:
+    -   **Root Directory:** Set to `client`.
+    -   **Framework Preset:** Select `Vite` (auto-detect is usually fine).
+4.  **Add `client/vercel.json`:** To ensure client-side routing (e.g., for `/p/:id` paths) works when directly accessing a URL, you must add a `vercel.json` file inside your `client/` directory with the following content:
+    ```json
+    {
+      "rewrites": [
+        { "source": "/(.*)", "destination": "/index.html" }
+      ]
+    }
+    ```
+    This tells Vercel to serve `index.html` for any route that is not a real file, allowing React Router to handle the URL.
+5.  Add the following Environment Variable in the Vercel project settings:
     -   `VITE_API_BASE_URL`: The public URL of your deployed backend service on Render (e.g., `https://your-backend.onrender.com`).
 
-Vercel will automatically handle client-side routing for paths like `/p/:id`. No `vercel.json` is required.

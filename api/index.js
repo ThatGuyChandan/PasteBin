@@ -30,7 +30,8 @@ const getCurrentTime = (req) => {
 
 const PASTE_KEY_PREFIX = 'paste:';
 
-async function getAndViewPaste(id, req) {
+// This is the internal data-fetching function, now without side-effects
+async function getPasteData(id, req) {
     const key = `${PASTE_KEY_PREFIX}${id}`;
     const currentTime = getCurrentTime(req);
 
@@ -41,34 +42,22 @@ async function getAndViewPaste(id, req) {
     }
     
     const expiresAt = paste.expiresAt ? parseInt(paste.expiresAt, 10) : null;
-    const createdAt = paste.createdAt ? parseInt(paste.createdAt, 10) : null;
-
     if (expiresAt && expiresAt < currentTime) {
         await redis.del(key);
         return { paste: null, error: 'expired' };
     }
 
-    let remainingViews = paste.remainingViews ? parseInt(paste.remainingViews, 10) : null;
-
-    if (remainingViews !== null) {
-        const decrementedViews = await redis.hincrby(key, 'remainingViews', -1);
-        if (decrementedViews < 0) {
-            await redis.del(key); 
-            return { paste: null, error: 'view_limit_exceeded' };
-        }
-        remainingViews = decrementedViews;
-    }
-
     return {
         paste: {
             content: paste.content,
-            created_at: createdAt,
+            created_at: paste.createdAt ? parseInt(paste.createdAt, 10) : null,
             expires_at: expiresAt,
-            remaining_views: remainingViews
+            remaining_views: paste.remainingViews ? parseInt(paste.remainingViews, 10) : null
         },
         error: null
     };
 }
+
 
 // --- API Routes ---
 
@@ -107,10 +96,51 @@ app.post('/api/pastes', async (req, res) => {
     }
 });
 
-// Retrieve a paste
+// New endpoint to view a paste AND decrement the counter
+app.post('/api/pastes/:id/view', async (req, res) => {
+    try {
+        const key = `${PASTE_KEY_PREFIX}${id}`;
+        const pasteData = await redis.hgetall(key);
+        
+        if (!pasteData || Object.keys(pasteData).length === 0) {
+            return res.status(404).json({ error: 'Paste not found' });
+        }
+
+        const maxViews = pasteData.maxViews ? parseInt(pasteData.maxViews, 10) : null;
+
+        if (maxViews !== null) {
+            const decrementedViews = await redis.hincrby(key, 'remainingViews', -1);
+            if (decrementedViews < 0) {
+                await redis.del(key);
+                return res.status(404).json({ error: 'View limit exceeded' });
+            }
+        }
+
+        // Now that we've processed the view, get the (potentially updated) data
+        const { paste, error } = await getPasteData(req.params.id, req);
+
+        if (error) {
+             return res.status(404).json({ error: `Paste not found (${error})` });
+        }
+
+        res.json({
+            content: paste.content,
+            created_at: paste.created_at ? new Date(paste.created_at).toISOString() : null,
+            remaining_views: paste.remaining_views,
+            expires_at: paste.expires_at ? new Date(paste.expires_at).toISOString() : null
+        });
+
+    } catch (error) {
+        console.error(`Failed to process view for paste ${req.params.id}:`, error);
+        res.status(500).json({ error: 'Failed to retrieve paste' });
+    }
+});
+
+// This endpoint is now for data retrieval ONLY, without side effects.
+// It is not currently used by the frontend but is kept for API completeness.
 app.get('/api/pastes/:id', async (req, res) => {
     try {
-        const { paste, error } = await getAndViewPaste(req.params.id, req);
+        const { paste, error } = await getPasteData(req.params.id, req);
 
         if (error) {
             return res.status(404).json({ error: `Paste not found (${error})` });
@@ -128,6 +158,7 @@ app.get('/api/pastes/:id', async (req, res) => {
         res.status(500).json({ error: 'Failed to retrieve paste' });
     }
 });
+
 
 // Health check route
 app.get('/api/healthz', async (req, res) => {

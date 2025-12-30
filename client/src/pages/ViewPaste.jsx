@@ -72,9 +72,10 @@ function ViewPaste() {
       try {
         setLoading(true);
         setError('');
-        const response = await axios.get(
-          `${import.meta.env.VITE_API_BASE_URL}/pastes/${id}`,
-          { signal: controller.signal } // Pass the abort signal
+        const response = await axios.post(
+          `${import.meta.env.VITE_API_BASE_URL}/api/pastes/${id}/view`,
+          {}, // POST request with an empty body
+          { signal: controller.signal }
         );
         setPaste(response.data);
       } catch (err) {
