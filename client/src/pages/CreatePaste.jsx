@@ -123,7 +123,7 @@ function CreatePaste() {
     }
 
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/pastes`, pasteData);
+      const response = await axios.post(`/api/pastes`, pasteData);
       setShareableUrl(response.data.url);
       setContent('');
       setTtlSeconds('');

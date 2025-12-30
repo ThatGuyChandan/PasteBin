@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+*.log
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Production
+dist/
+build/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

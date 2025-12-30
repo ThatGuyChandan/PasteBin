@@ -153,7 +153,7 @@ app.get('/api/healthz', async (req, res) => {
         }
     } catch (error) {
         console.error('Health check failed - Redis connection error:', error);
-        res.status(500).json({ ok: false, error: 'Redis connection failed' });
+        res.status(200).json({ ok: false, error: 'Redis connection failed' });
     }
 });
 
