@@ -123,8 +123,9 @@ function CreatePaste() {
     }
 
     try {
-      const response = await axios.post(`/api/pastes`, pasteData);
-      setShareableUrl(response.data.url);
+      const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/pastes`, pasteData);
+      const shareableUrl = `${window.location.origin}/p/${response.data.id}`;
+      setShareableUrl(shareableUrl);
       setContent('');
       setTtlSeconds('');
       setMaxViews('');

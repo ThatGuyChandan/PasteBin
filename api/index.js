@@ -7,7 +7,9 @@ require('dotenv').config();
 
 // Initialize Express app
 const app = express();
-app.use(cors());
+
+// Enable CORS only for the specified client URL
+app.use(cors({ origin: process.env.CLIENT_URL }));
 app.use(express.json());
 
 // --- Redis Client Setup ---
@@ -68,19 +70,10 @@ async function getAndViewPaste(id, req) {
     };
 }
 
-
 // --- API Routes ---
-// Note: The /api prefix is removed because Vercel routes /api/* to this file.
-// The root of this Express app is effectively /api
-
-app.get('/', (req, res) => {
-    console.log('API root invoked.');
-    res.send('Pastebin-Lite API with Redis');
-});
 
 // Create a new paste
-app.post('/pastes', async (req, res) => {
-    console.log('Received request to create a new paste.');
+app.post('/api/pastes', async (req, res) => {
     try {
         const { content, ttl_seconds, max_views } = req.body;
         if (!content) {
@@ -88,7 +81,7 @@ app.post('/pastes', async (req, res) => {
         }
 
         const id = nanoid(8);
-        const createdAt = Date.now();
+        const createdAt = getCurrentTime(req);
         const expiresAt = ttl_seconds ? createdAt + (ttl_seconds * 1000) : null;
         
         const parsedMaxViews = max_views ? parseInt(max_views, 10) : null;
@@ -106,9 +99,7 @@ app.post('/pastes', async (req, res) => {
         const key = `${PASTE_KEY_PREFIX}${id}`;
         await redis.multi().hset(key, pasteData).exec();
 
-        // The public URL for sharing
-        const url = `${req.protocol}://${req.get('host')}/p/${id}`;
-        res.status(201).json({ id, url });
+        res.status(201).json({ id });
 
     } catch (error) {
         console.error('Failed to create paste:', error);
@@ -116,9 +107,8 @@ app.post('/pastes', async (req, res) => {
     }
 });
 
-// Retrieve a paste (API)
-app.get('/pastes/:id', async (req, res) => {
-    console.log(`Received request to view paste: ${req.params.id}`);
+// Retrieve a paste
+app.get('/api/pastes/:id', async (req, res) => {
     try {
         const { paste, error } = await getAndViewPaste(req.params.id, req);
 
@@ -140,8 +130,7 @@ app.get('/pastes/:id', async (req, res) => {
 });
 
 // Health check route
-app.get('/healthz', async (req, res) => {
-    console.log('Received request for health check.');
+app.get('/api/healthz', async (req, res) => {
     try {
         const pingResponse = await redis.ping();
         if (pingResponse === 'PONG') {
@@ -155,13 +144,14 @@ app.get('/healthz', async (req, res) => {
     }
 });
 
-
-// --- Error handling middleware (must be last) ---
+// --- Error handling middleware ---
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// Vercel will wrap this Express app into a serverless function.
-// Exporting the app is all that's needed. DO NOT call app.listen().
-module.exports = app;
+// --- Server Startup ---
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});

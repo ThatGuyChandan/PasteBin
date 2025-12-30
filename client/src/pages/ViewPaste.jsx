@@ -73,7 +73,7 @@ function ViewPaste() {
         setLoading(true);
         setError('');
         const response = await axios.get(
-          `/api/pastes/${id}`,
+          `${import.meta.env.VITE_API_BASE_URL}/pastes/${id}`,
           { signal: controller.signal } // Pass the abort signal
         );
         setPaste(response.data);
